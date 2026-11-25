@@ -33,31 +33,45 @@ final class SchemaAggregator
 {
     private readonly MySqlDataTypeToPhpTypeConverter $mySqlDataTypeToPhpTypeConverter;
 
+    /**
+     * The migration method being read, so its expressions can be typed in its scope.
+     *
+     * @var array{string, string|null, PhpParser\Node\Stmt\ClassMethod}|null
+     */
+    private array|null $method = null;
+
     /** @param array<string, SchemaTable> $tables */
     public function __construct(
         private ReflectionProvider $reflectionProvider,
         private InitializerExprTypeResolver $initializerExprTypeResolver,
         private SqlParser $sqlParser,
         public array $tables = [],
+        private MigrationScopeResolver|null $scopeResolver = null,
     ) {
         $this->mySqlDataTypeToPhpTypeConverter = new MySqlDataTypeToPhpTypeConverter();
     }
 
-    /** @param  array<int, PhpParser\Node\Stmt> $stmts */
-    public function addStatements(array $stmts): void
+    /**
+     * @param array<int, PhpParser\Node\Stmt> $stmts
+     * @param string|null                     $file  the migration file, which lets the tables it names be typed in scope
+     */
+    public function addStatements(array $stmts, string|null $file = null): void
     {
         $nodeFinder = new NodeFinder();
 
         /** @var PhpParser\Node\Stmt\Class_[] $classes */
         $classes = $nodeFinder->findInstanceOf($stmts, PhpParser\Node\Stmt\Class_::class);
 
+        /** @var PhpParser\Node\Stmt\Namespace_|null $namespace */
+        $namespace = $nodeFinder->findFirstInstanceOf($stmts, PhpParser\Node\Stmt\Namespace_::class);
+
         foreach ($classes as $stmt) {
-            $this->addClassStatements($stmt->stmts);
+            $this->addClassStatements($stmt->stmts, $file, $namespace?->name?->toString());
         }
     }
 
     /** @param  array<int, PhpParser\Node\Stmt> $stmts */
-    private function addClassStatements(array $stmts): void
+    private function addClassStatements(array $stmts, string|null $file, string|null $namespace): void
     {
         foreach ($stmts as $stmt) {
             if (
@@ -68,7 +82,13 @@ final class SchemaAggregator
                 continue;
             }
 
-            $this->addUpMethodStatements($stmt->stmts);
+            $this->method = $file === null ? null : [$file, $namespace, $stmt];
+
+            try {
+                $this->addUpMethodStatements($stmt->stmts);
+            } finally {
+                $this->method = null;
+            }
         }
     }
 
@@ -125,7 +145,7 @@ final class SchemaAggregator
             return;
         }
 
-        $tableName = $this->resolveName($call->getArgs()[0]->value);
+        $tableName = $this->resolveTableName($call->getArgs()[0]->value);
 
         if ($tableName === null) {
             return;
@@ -337,6 +357,26 @@ final class SchemaAggregator
                 $stmt,
             );
         }
+    }
+
+    /**
+     * The table an expression names, typed in the migration method's scope so
+     * any expression with a single constant string type names a table. Without
+     * a scope, only the names resolveName() reads are known.
+     */
+    private function resolveTableName(PhpParser\Node\Expr $value): string|null
+    {
+        if ($this->scopeResolver !== null && $this->method !== null) {
+            [$file, $namespace, $method] = $this->method;
+
+            $constantStrings = $this->scopeResolver->getType($file, $namespace, $method, $value)?->getConstantStrings() ?? [];
+
+            if (count($constantStrings) === 1) {
+                return $constantStrings[0]->getValue();
+            }
+        }
+
+        return $this->resolveName($value);
     }
 
     private function resolveName(PhpParser\Node\Expr $value): string|null

@@ -11,6 +11,7 @@ use App\MemberWithoutTimestampsAttribute;
 use App\MemberWithoutTimestampsTable;
 use Larastan\Larastan\Properties\MigrationCache;
 use Larastan\Larastan\Properties\MigrationHelper;
+use Larastan\Larastan\Properties\MigrationScopeResolver;
 use Larastan\Larastan\Properties\ModelCastHelper;
 use Larastan\Larastan\Properties\ModelPropertyHelper;
 use Larastan\Larastan\Properties\Schema\MySqlDataTypeToPhpTypeConverter;
@@ -133,6 +134,7 @@ class ModelPropertyHelperTest extends PHPStanTestCase
             $this->reflectionProvider,
             self::getContainer()->getByType(InitializerExprTypeResolver::class),
             new IamcalSqlParser(),
+            self::getContainer()->getByType(MigrationScopeResolver::class),
         ) extends MigrationHelper {
             public int $migrationFileLookups = 0;
 
@@ -217,6 +219,7 @@ class ModelPropertyHelperTest extends PHPStanTestCase
             $this->reflectionProvider,
             self::getContainer()->getByType(InitializerExprTypeResolver::class),
             new IamcalSqlParser(),
+            self::getContainer()->getByType(MigrationScopeResolver::class),
         );
 
         $squashedMigrationHelper = new SquashedMigrationHelper(

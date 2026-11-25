@@ -40,6 +40,7 @@ class MigrationHelper
         private InitializerExprTypeResolver $initializerExprTypeResolver,
         #[AutowiredParameter(ref: '@sqlParser')]
         private SqlParser $sqlParser,
+        private MigrationScopeResolver $scopeResolver,
     ) {
     }
 
@@ -59,6 +60,7 @@ class MigrationHelper
             $this->initializerExprTypeResolver,
             $this->sqlParser,
             $tables,
+            $this->scopeResolver,
         );
         $filesArray       = $this->getMigrationFiles();
 
@@ -72,7 +74,7 @@ class MigrationHelper
 
         foreach ($filesArray as $file) {
             try {
-                $schemaAggregator->addStatements($this->parser->parseFile($file->getPathname()));
+                $schemaAggregator->addStatements($this->parser->parseFile($file->getPathname()), $file->getPathname());
             } catch (ParserErrorsException) {
                 continue;
             }

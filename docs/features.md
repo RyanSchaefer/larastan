@@ -279,6 +279,29 @@ Larastan will automatically scan your application's migrations in order to infer
 
 Various parameters can be set to [configure this behavior](custom-config-parameters.md#databasemigrationspath).
 
+The table passed to `Schema::create()` or `Schema::table()` is typed the way PHPStan types it in analysed code, and any expression with a single constant string type names the table. Variables are read from the assignments before the call at the top level of the migration method.
+
+```php
+Schema::create('posts', function (Blueprint $table) { /* ... */ });
+Schema::create(Tables::POSTS, function (Blueprint $table) { /* ... */ });
+Schema::create((new Post())->getTable(), function (Blueprint $table) { /* ... */ });
+
+$post = new Post();
+Schema::create($post->getTable(), function (Blueprint $table) { /* ... */ });
+```
+
+Only the expression naming the table, and the assignments it reads, are analysed. The rest of the migration is not, so a data migration is never analysed against a schema that is still being read.
+
+### Model table names
+
+A model's `getTable()` is typed as the table Eloquent resolves for the model class, as read from its `$table` property, its `#[Table]` attribute or the naming convention:
+
+```php
+(new Post())->getTable(); // 'posts'
+```
+
+A model overriding `getTable()` keeps its declared `string` type. Like model properties, the type assumes the instance uses the table of the class it is typed as: a subclass with a different table, or a table changed at runtime with `setTable()`, is not seen.
+
 String literals passed to `DB::statement()` and `DB::unprepared()` are read with the same SQL parsers used for schema dumps. `CREATE TABLE` statements those parsers understand are added to the schema. A table the schema builder already recorded is left as-is. Other SQL is left unchanged.
 
 ```php
